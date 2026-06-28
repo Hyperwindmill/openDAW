@@ -28,5 +28,6 @@
 
 ## Workflow
 
+- **ALWAYS warn the user and wait for an explicit OK before modifying ANYTHING** — any file, code, config, or otherwise. Describe the intended change first; do not touch the working tree until the user approves. Reason: the dev server (`npm run dev:studio`) hot-reloads on every source change, which reloads the app, and openDAW has **no autosave** — any unsaved project open in the browser is lost on reload. A surprise edit can destroy the user's work.
 - **Analyze bugs and propose fixes, but wait for approval before editing code.**
 - **Never use `Write` to rewrite existing files** — always use `Edit` (small diffs).

@@ -7,7 +7,7 @@
 // @param bachi    0.5
 // @param hardness 0.6
 // @group Performance blue
-// @param glide    0.08  0  0.4  lin  s
+// @param glide    0.08  0  0.4  linear  s
 // @group Output green
 // @param volume   0.7
 
