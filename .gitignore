@@ -19,6 +19,7 @@ lerna-debug.log
 /packages/app/studio/public/sponsors.json
 /certs/localhost.pem
 /certs/localhost-key.pem
+/mkcert-*
 /packages/app/soundfont/public/soundfonts/
 /packages/studio/scripting/src/api.declaration.d.ts
 tsconfig.tsbuildinfo
