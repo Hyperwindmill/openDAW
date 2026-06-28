@@ -125,16 +125,39 @@ const detectPitch = (buf, atSec, sr, fmin = 70, fmax = 700) => {
     const start = Math.floor(atSec * sr)
     const len = 2048
     const lagMin = Math.floor(sr / fmax), lagMax = Math.floor(sr / fmin)
+    const span = len + lagMax
+    const filtered = new Float32Array(span)
+    const coef = 1 - Math.exp(-2 * Math.PI * 500 / sr)
+    let lp = 0
+    for (let i = 0; i < span; i++) { lp += coef * (buf[start + i] - lp); filtered[i] = lp }
     let bestLag = lagMin, best = -Infinity
     for (let lag = lagMin; lag <= lagMax; lag++) {
         let sum = 0
-        for (let i = 0; i < len; i++) sum += buf[start + i] * buf[start + i + lag]
+        for (let i = 0; i < len; i++) sum += filtered[i] * filtered[i + lag]
         if (sum > best) { best = sum; bestLag = lag }
     }
     return sr / bestLag
 }
 const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12)
 const near = (a, b, tol = 0.06) => Math.abs(a - b) / b < tol
+// fraction of spectral magnitude above 2kHz (proxy for the sawari/nasal buzz)
+const hiRatio = (buf, atSec, sr) => {
+    const N = 2048, start = Math.floor(atSec * sr), maxK = 400
+    let hi = 0, total = 0
+    for (let k = 1; k <= maxK; k++) {
+        const w = 2 * Math.PI * k / N
+        let re = 0, im = 0
+        for (let n = 0; n < N; n++) {
+            const win = 0.5 - 0.5 * Math.cos(2 * Math.PI * n / (N - 1))
+            const val = buf[start + n] * win
+            re += val * Math.cos(w * n); im -= val * Math.sin(w * n)
+        }
+        const mag = Math.sqrt(re * re + im * im)
+        total += mag
+        if (k * sr / N > 2000) hi += mag
+    }
+    return total > 0 ? hi / total : 0
+}
 
 // 6) Legato glide: A2 -> A3 should slide continuously to the target pitch, staying mono
 {
@@ -166,6 +189,14 @@ const near = (a, b, tol = 0.06) => Math.abs(a - b) / b < tol
     ])
     const fEnd = detectPitch(r.out, 0.9, sampleRate)
     check("staccato retriggers (no glide leftover)", near(fEnd, hz(45)), `f=${fEnd.toFixed(1)} want=${hz(45).toFixed(1)}`)
+}
+
+// 8) Sawari/nasal buzz must be present: a sustained note has strong HF content
+{
+    const p = new Processor()
+    const r = record(p, 0.6, [{at: 0, fn: pr => pr.noteOn(45, 0.95, 0, 1)}])
+    const ratio = hiRatio(r.out, 0.30, sampleRate)
+    check("sawari/nasal buzz present (>2kHz energy >= 12%)", ratio >= 0.12, `hiRatio=${(ratio * 100).toFixed(1)}%`)
 }
 
 console.log(fail === 0 ? "\nALL PASS" : `\n${fail} FAILURE(S)`)

@@ -1,8 +1,10 @@
 // @label Shamisen
-// @group String orange
+// @group Tone orange
 // @param decay    1.4  0.2  5.0  exp  s
 // @param tone     0.55
-// @param sawari   0.4
+// @group Sawari red
+// @param sawari   0.6
+// @param nasal    0.5
 // @group Pluck yellow
 // @param bachi    0.5
 // @param hardness 0.6
@@ -15,9 +17,13 @@ class Processor {
     constructor() {
         this.voices = []
         this.size = 8192
-        this.params = {decay: 1.4, tone: 0.55, sawari: 0.4, bachi: 0.5, hardness: 0.6, glide: 0.08, volume: 0.7}
+        this.params = {decay: 1.4, tone: 0.55, sawari: 0.6, nasal: 0.5, bachi: 0.5, hardness: 0.6, glide: 0.08, volume: 0.7}
         this.dcX = 0
         this.dcY = 0
+        this.nLow = 0
+        this.nBand = 0
+        this.nf = 2 * Math.sin(Math.PI * 2000 / sampleRate)
+        this.nq = 0.4
     }
     paramChanged(label, value) {
         this.params[label] = value
@@ -80,8 +86,9 @@ class Processor {
     }
     process(output, block) {
         const [outL, outR] = output
-        const {sawari, volume} = this.params
+        const {sawari, nasal, volume} = this.params
         const size = this.size
+        const drive = 1 + sawari * 6
         for (let v = this.voices.length - 1; v >= 0; v--) {
             const voice = this.voices[v]
             const {buffer, bright, feedback, bodyInc, clickDecay, targetDelay, glideCoef} = voice
@@ -96,10 +103,11 @@ class Processor {
                 if (i1 >= size) i1 = 0
                 const sample = buffer[i0] + (buffer[i1] - buffer[i0]) * frac
                 lp += bright * (sample - lp)
-                buffer[writePos] = lp * feedback
+                let fb = lp * feedback
+                if (sawari > 0) fb = Math.tanh(fb * drive) / drive
+                buffer[writePos] = fb
                 if (++writePos >= size) writePos = 0
-                let str = sample
-                if (sawari > 0) str = sample + (Math.tanh(sample * (1 + sawari * 8)) - sample) * sawari
+                const str = sample
                 clickEnv *= clickDecay
                 slapLP += 0.45 * ((Math.random() * 2 - 1) - slapLP)
                 const click = (slapLP * 0.6 + Math.sin(bodyPhase) * 0.5) * clickEnv
@@ -115,14 +123,23 @@ class Processor {
             if (amp * env < 2e-4 && clickEnv < 2e-4) this.voices.splice(v, 1)
         }
         let dcX = this.dcX, dcY = this.dcY
+        let nLow = this.nLow, nBand = this.nBand
+        const nf = this.nf, nq = this.nq
         for (let s = block.s0; s < block.s1; s++) {
             const x = outL[s]
             dcY = x - dcX + 0.995 * dcY
             dcX = x
-            const y = Math.tanh(dcY)
+            let y = dcY
+            if (nasal > 0) {
+                nLow += nf * nBand
+                const nHigh = y - nLow - nq * nBand
+                nBand += nf * nHigh
+                y += nasal * nBand * 1.5
+            }
+            y = Math.tanh(y)
             outL[s] = y
             outR[s] = y
         }
-        this.dcX = dcX; this.dcY = dcY
+        this.dcX = dcX; this.dcY = dcY; this.nLow = nLow; this.nBand = nBand
     }
 }
