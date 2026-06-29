@@ -31,3 +31,11 @@
 - **ALWAYS warn the user and wait for an explicit OK before modifying ANYTHING** — any file, code, config, or otherwise. Describe the intended change first; do not touch the working tree until the user approves. Reason: the dev server (`npm run dev:studio`) hot-reloads on every source change, which reloads the app, and openDAW has **no autosave** — any unsaved project open in the browser is lost on reload. A surprise edit can destroy the user's work.
 - **Analyze bugs and propose fixes, but wait for approval before editing code.**
 - **Never use `Write` to rewrite existing files** — always use `Edit` (small diffs).
+
+## openDAW Apparat instruments (my-instruments)
+
+Custom instrument processors live in `packages/app/studio/src/my-instruments/` (class `Processor`, plain-JS AudioWorklet). To turn a `.js` into a selectable preset: 1) create `<name>.js` (header `// @label Name` sets the menu name); 2) import it `?raw` and add it to `MyInstruments` in `index.ts` (`import Foo from "./foo.js?raw"` → `{name: "Foo", code: Foo}`).
+
+Test convention: a sibling `<name>.test.mjs` loads the source via `new Function("sampleRate", src + "; return Processor")` and runs offline blocks, checking finite/bounded output, decay-to-silence, voice self-cull, and the voice-steal cap. Run with `node packages/app/studio/src/my-instruments/<name>.test.mjs`.
+
+Key processor rules: never allocate inside `process()`; identify voices by `id` not `pitch`; `reset()` fast-releases (don't hard-clear the array). For drum kits the note `pitch` selects the GM piece (36 kick, 38 snare, 39 clap, 42 closed hat, 46 open hat), it is not a melodic pitch.
