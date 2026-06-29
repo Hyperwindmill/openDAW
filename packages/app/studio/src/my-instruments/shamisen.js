@@ -10,6 +10,10 @@
 // @param hardness 0.6
 // @group Performance blue
 // @param glide    0.08  0  0.4  linear  s
+// @group Body purple
+// @param body      0.4
+// @param resonance 0.5
+// @param bodyTune  1.0  0.5  2.0  exp  x
 // @group Output green
 // @param volume   0.7
 
@@ -17,16 +21,31 @@ class Processor {
     constructor() {
         this.voices = []
         this.size = 8192
-        this.params = {decay: 1.4, tone: 0.55, sawari: 0.6, nasal: 0.5, bachi: 0.5, hardness: 0.6, glide: 0.08, volume: 0.7}
+        this.params = {decay: 1.4, tone: 0.55, sawari: 0.6, nasal: 0.5, bachi: 0.5, hardness: 0.6, glide: 0.08, body: 0.4, resonance: 0.5, bodyTune: 1.0, volume: 0.7}
         this.dcX = 0
         this.dcY = 0
         this.nLow = 0
         this.nBand = 0
         this.nf = 2 * Math.sin(Math.PI * 2000 / sampleRate)
         this.nq = 0.4
+        this.bodyFreqs = [240, 380, 560]
+        this.bGain = [0.8, 0.55, 0.4]
+        this.bf = [0, 0, 0]
+        this.bLow = [0, 0, 0]
+        this.bBand = [0, 0, 0]
+        this.bq = 0.28 - 0.25 * this.params.resonance
+        this.updateBody()
+    }
+    updateBody() {
+        const tune = this.params.bodyTune
+        for (let m = 0; m < this.bodyFreqs.length; m++) {
+            this.bf[m] = 2 * Math.sin(Math.PI * Math.min(0.45 * sampleRate, this.bodyFreqs[m] * tune) / sampleRate)
+        }
     }
     paramChanged(label, value) {
         this.params[label] = value
+        if (label === "bodyTune") this.updateBody()
+        if (label === "resonance") this.bq = 0.28 - 0.25 * value
     }
     noteOn(pitch, velocity, cent, id) {
         const {tone, decay, bachi, hardness, glide} = this.params
@@ -86,7 +105,7 @@ class Processor {
     }
     process(output, block) {
         const [outL, outR] = output
-        const {sawari, nasal, volume} = this.params
+        const {sawari, nasal, volume, body} = this.params
         const size = this.size
         const drive = 1 + sawari * 6
         for (let v = this.voices.length - 1; v >= 0; v--) {
@@ -125,6 +144,7 @@ class Processor {
         let dcX = this.dcX, dcY = this.dcY
         let nLow = this.nLow, nBand = this.nBand
         const nf = this.nf, nq = this.nq
+        const bf = this.bf, bLow = this.bLow, bBand = this.bBand, bGain = this.bGain, bq = this.bq, nModes = bf.length
         for (let s = block.s0; s < block.s1; s++) {
             const x = outL[s]
             dcY = x - dcX + 0.995 * dcY
@@ -135,6 +155,16 @@ class Processor {
                 const nHigh = y - nLow - nq * nBand
                 nBand += nf * nHigh
                 y += nasal * nBand * 1.5
+            }
+            if (body > 0) {
+                let bodyOut = 0
+                for (let m = 0; m < nModes; m++) {
+                    bLow[m] += bf[m] * bBand[m]
+                    const bHigh = dcY - bLow[m] - bq * bBand[m]
+                    bBand[m] += bf[m] * bHigh
+                    bodyOut += bBand[m] * bGain[m]
+                }
+                y += body * bodyOut * bq
             }
             y = Math.tanh(y)
             outL[s] = y
