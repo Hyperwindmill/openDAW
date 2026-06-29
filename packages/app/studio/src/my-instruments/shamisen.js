@@ -1,6 +1,6 @@
 // @label Shamisen
 // @group Tone orange
-// @param decay    1.4  0.2  5.0  exp  s
+// @param decay    1.4  0.2  16  exp  s
 // @param tone     0.55
 // @group Sawari red
 // @param sawari   0.6
@@ -74,7 +74,7 @@ class Processor {
         for (const voice of this.voices) {
             if (voice.id === id && !voice.releasing) {
                 voice.releasing = true
-                voice.releaseRate = Math.exp(-7 / (0.18 * sampleRate))
+                voice.releaseRate = 1
             }
         }
     }
