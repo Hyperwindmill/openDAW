@@ -7,30 +7,30 @@
 // @param noise      0.7
 // @param tone       0.5
 // @group Amp green
-// @param attack     0.005 0.001 1.0   exp     s
-// @param decay      0.5   0.05  4.0   exp     s
+// @param attack     0.1   0.001 0.5   exp     s
+// @param release    0.3   0.05  3.0   exp     s
 // @param volume     0.7
 
 class Processor {
     constructor() {
         this.voices = []
-        this.params = {startFreq: 8000, endFreq: 200, sweepTime: 1.0, noise: 0.7, tone: 0.5, attack: 0.005, decay: 0.5, volume: 0.7}
+        this.params = {startFreq: 8000, endFreq: 200, sweepTime: 1.0, noise: 0.7, tone: 0.5, attack: 0.1, release: 0.3, volume: 0.7}
     }
     paramChanged(label, value) {
         this.params[label] = value
     }
     noteOn(pitch, velocity, cent, id) {
-        const {startFreq, endFreq, sweepTime, attack, decay} = this.params
+        const {startFreq, endFreq, sweepTime, attack, release} = this.params
         const pitchMul = Math.pow(2, (pitch - 60) / 12)
         const f0 = startFreq * pitchMul, f1 = endFreq * pitchMul
         if (this.voices.length >= 8) this.voices.shift()
         this.voices.push({
             id, velocity,
             currentFreq: f0, startFreq: f0, endFreq: f1,
-            sweepCoef: 1 - Math.exp(-1 / (sweepTime * sampleRate)),
+            sweepCoef: 1 / (sweepTime * sampleRate),
             env: 0, attackRate: 1 / Math.max(1, attack * sampleRate),
-            decayCoef: Math.exp(-7 / (decay * sampleRate)),
-            releasing: false, peaked: false,
+            releaseCoef: Math.exp(-7 / (release * sampleRate)),
+            releasing: false, peaked: false, sweeping: true,
             bpLow: 0, bpBand: 0,
             lp1: 0,
             sweepPos: 0
@@ -45,7 +45,7 @@ class Processor {
         const fast = Math.exp(-7 / (0.005 * sampleRate))
         for (const voice of this.voices) {
             voice.releasing = true
-            voice.decayCoef = fast
+            voice.releaseCoef = fast
         }
     }
     process(output, block) {
@@ -53,40 +53,41 @@ class Processor {
         const {noise, tone, volume} = this.params
         for (let v = this.voices.length - 1; v >= 0; v--) {
             const voice = this.voices[v]
-            let {currentFreq, env, bpLow, bpBand, lp1, sweepPos, peaked} = voice
-            const {startFreq, endFreq, sweepCoef, attackRate, decayCoef, velocity, releasing} = voice
+            let {currentFreq, env, bpLow, bpBand, lp1, sweepPos, peaked, sweeping} = voice
+            const {startFreq, endFreq, sweepCoef, attackRate, releaseCoef, velocity, releasing} = voice
             for (let s = block.s0; s < block.s1; s++) {
                 if (releasing) {
-                    env *= decayCoef
-                } else if (!peaked) {
-                    env += attackRate
-                    if (env >= 1) { env = 1; peaked = true }
+                    env *= releaseCoef
+                } else if (sweeping) {
+                    if (env < 1) { env += attackRate; if (env > 1) env = 1 }
+                    sweepPos += sweepCoef
+                    if (sweepPos >= 1) { sweepPos = 1; sweeping = false; peaked = true }
+                    env = 1 - sweepPos * sweepPos * 0.8
                 } else {
-                    env *= decayCoef
+                    env *= releaseCoef
                 }
-                sweepPos += sweepCoef
                 currentFreq = startFreq + (endFreq - startFreq) * sweepPos
                 if (currentFreq < 30) currentFreq = 30
                 const bpF = 2 * Math.sin(Math.PI * currentFreq / sampleRate)
                 const bpQ = 0.5 + tone * 3
                 const white = Math.random() * 2 - 1
-                lp1 += 0.02 * (white - lp1)
+                lp1 += 0.15 * (white - lp1)
                 const pink = lp1
                 bpLow += bpF * bpBand
                 const high = pink - bpLow - bpQ * bpBand
                 bpBand += bpF * high
                 if (bpBand > 200) bpBand = 200; else if (bpBand < -200) bpBand = -200
-                const out = bpBand * env * velocity * noise
+                const out = bpBand * env * env * velocity * noise
                 outL[s] += out
                 outR[s] += out
             }
             voice.currentFreq = currentFreq; voice.env = env; voice.bpLow = bpLow; voice.bpBand = bpBand
-            voice.lp1 = lp1; voice.sweepPos = sweepPos; voice.peaked = peaked
+            voice.lp1 = lp1; voice.sweepPos = sweepPos; voice.peaked = peaked; voice.sweeping = sweeping
             if (env < 2e-4) this.voices.splice(v, 1)
         }
         for (let s = block.s0; s < block.s1; s++) {
-            outL[s] = Math.tanh(outL[s] * volume * 2.0)
-            outR[s] = Math.tanh(outR[s] * volume * 2.0)
+            outL[s] = Math.tanh(outL[s] * volume * 10.0)
+            outR[s] = Math.tanh(outR[s] * volume * 10.0)
         }
     }
 }

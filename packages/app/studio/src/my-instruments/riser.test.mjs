@@ -42,7 +42,7 @@ const check = (name, cond, extra = "") => { console.log(`${cond ? "PASS" : "FAIL
 {
     const p = new Processor()
     p.paramChanged("sweepTime", 0.5)
-    p.paramChanged("decay", 1.5)
+    p.paramChanged("release", 1.5)
     const r = record(p, 1.0, [{at: 0, fn: pr => pr.noteOn(60, 0.9, 0, 1)}])
     const N = 512
     const winF = (start) => {
@@ -65,7 +65,26 @@ const check = (name, cond, extra = "") => { console.log(`${cond ? "PASS" : "FAIL
     check("spectral content rises", lateRatio > earlyRatio,
         `early=${(earlyRatio * 100).toFixed(0)}% late=${(lateRatio * 100).toFixed(0)}%`)
 }
-// 3) reset fast-releases
+// 3) Envelope rises with sweep (amplitude grows over time)
+{
+    const frame = 1024
+    const p = new Processor()
+    p.paramChanged("sweepTime", 1.5)
+    p.paramChanged("release", 0.5)
+    const r = record(p, 1.2, [{at: 0, fn: pr => pr.noteOn(60, 0.9, 0, 1)}])
+    const env = []
+    for (let i = 0; i + frame <= r.out.length; i += frame) {
+        let s = 0
+        for (let j = 0; j < frame; j++) s += r.out[i + j] * r.out[i + j]
+        env.push(Math.sqrt(s / frame))
+    }
+    const early = env[2]
+    const mid = env[Math.floor(env.length * 0.5)]
+    const late = env[Math.floor(env.length * 0.7)]
+    check("amplitude rises (mid > early)", mid > early, `early=${early.toExponential(2)} mid=${mid.toExponential(2)}`)
+    check("amplitude rises (late > early)", late > early, `early=${early.toExponential(2)} late=${late.toExponential(2)}`)
+}
+// 4) reset fast-releases
 {
     const p = new Processor()
     const r = record(p, 1.0, [

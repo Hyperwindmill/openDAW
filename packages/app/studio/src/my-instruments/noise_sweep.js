@@ -60,7 +60,7 @@ class Processor {
                     env *= decayCoef
                 }
                 const white = Math.random() * 2 - 1
-                lp1 += 0.02 * (white - lp1)
+                lp1 += 0.15 * (white - lp1)
                 const pink = lp1
                 bpLow += bpF * bpBand
                 const high = pink - bpLow - bpQ * bpBand
@@ -74,8 +74,8 @@ class Processor {
             if (env < 2e-4) this.voices.splice(v, 1)
         }
         for (let s = block.s0; s < block.s1; s++) {
-            outL[s] = Math.tanh(outL[s] * volume * 2.0)
-            outR[s] = Math.tanh(outR[s] * volume * 2.0)
+            outL[s] = Math.tanh(outL[s] * volume * 10.0)
+            outR[s] = Math.tanh(outR[s] * volume * 10.0)
         }
     }
 }

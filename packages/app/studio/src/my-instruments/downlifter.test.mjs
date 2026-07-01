@@ -60,11 +60,31 @@ const check = (name, cond, extra = "") => { console.log(`${cond ? "PASS" : "FAIL
         return hi / Math.max(hi + lo, 1e-30)
     }
     const earlyRatio = winF(0)
-    const lateRatio = winF(Math.floor(0.5 * sampleRate))
+    const lateRatio = winF(Math.floor(0.4 * sampleRate))
     check("spectral content falls", earlyRatio > lateRatio,
         `early=${(earlyRatio * 100).toFixed(0)}% late=${(lateRatio * 100).toFixed(0)}%`)
 }
-// 3) reset fast-releases
+// 3) Envelope falls with sweep (amplitude decreases over time)
+{
+    const frame = 1024
+    const p = new Processor()
+    p.paramChanged("sweepTime", 1.0)
+    p.paramChanged("attack", 0.001)
+    p.paramChanged("release", 0.1)
+    const r = record(p, 1.5, [{at: 0, fn: pr => pr.noteOn(60, 0.9, 0, 1)}])
+    const env = []
+    for (let i = 0; i + frame <= r.out.length; i += frame) {
+        let s = 0
+        for (let j = 0; j < frame; j++) s += r.out[i + j] * r.out[i + j]
+        env.push(Math.sqrt(s / frame))
+    }
+    const early = env[2]
+    const mid = env[Math.floor(env.length * 0.5)]
+    const late = env[Math.floor(env.length * 0.8)]
+    check("amplitude falls (mid < early)", mid < early, `early=${early.toExponential(2)} mid=${mid.toExponential(2)}`)
+    check("amplitude falls (late < early)", late < early, `early=${early.toExponential(2)} late=${late.toExponential(2)}`)
+}
+// 4) reset fast-releases
 {
     const p = new Processor()
     const r = record(p, 1.0, [
