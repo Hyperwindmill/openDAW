@@ -26,6 +26,30 @@ const record = (proc, seconds, events) => {
     return {out, maxVoices, anyNaN, peak}
 }
 
+const rmsEnvelope = (buf, frame) => {
+    const env = []
+    for (let i = 0; i + frame <= buf.length; i += frame) {
+        let s = 0
+        for (let j = 0; j < frame; j++) s += buf[i + j] * buf[i + j]
+        env.push(Math.sqrt(s / frame))
+    }
+    return env
+}
+const wobbleRate = (env, frameRate, fmax = 16) => {
+    const mean = env.reduce((a, b) => a + b, 0) / env.length
+    const e = env.map(x => x - mean)
+    const N = e.length, dur = N / frameRate
+    let bestHz = 0, best = -Infinity
+    for (let k = 1; k / dur <= fmax; k++) {
+        let re = 0, im = 0
+        for (let n = 0; n < N; n++) { const w = 2 * Math.PI * k * n / N; re += e[n] * Math.cos(w); im -= e[n] * Math.sin(w) }
+        const mag = re * re + im * im
+        if (mag > best) { best = mag; bestHz = k / dur }
+    }
+    return bestHz
+}
+const near = (a, b, tol) => Math.abs(a - b) / b < tol
+
 let fail = 0
 const check = (name, cond, extra = "") => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}  ${extra}`); if (!cond) fail++ }
 
@@ -51,21 +75,41 @@ const check = (name, cond, extra = "") => { console.log(`${cond ? "PASS" : "FAIL
 {
     const frame = 256
     const p = new Processor()
+    p.paramChanged("wobble", 0.25)
+    p.paramChanged("depth", 0)
     p.paramChanged("indexLFO", 8)
     p.paramChanged("indexDepth", 0.8)
     const r = record(p, 1.5, [{at: 0, fn: pr => pr.noteOn(45, 0.9, 0, 1)}])
-    const env = []
-    for (let i = 0; i + frame <= r.out.length; i += frame) {
-        let s = 0
-        for (let j = 0; j < frame; j++) s += r.out[i + j] * r.out[i + j]
-        env.push(Math.sqrt(s / frame))
-    }
+    const env = rmsEnvelope(r.out, frame)
     const steady = env.slice(Math.floor(env.length * 0.2))
     const mx = Math.max(...steady), mn = Math.min(...steady)
     const depth = (mx - mn) / Math.max(mx, 1e-10)
     check("indexLFO modulates", depth > 0.05, `depth=${(depth * 100).toFixed(0)}%`)
 }
-// 4) Poly + reset
+// 4) Wobble modulates at the set rate (4Hz and 8Hz)
+// The resonant LP produces two amplitude peaks per LFO cycle (rising and
+// falling through resonance), so the detected DFT frequency is ~2× the LFO.
+// We accept either the fundamental or the first harmonic.
+{
+    const frame = 256, frameRate = sampleRate / frame
+    for (const rate of [4, 8]) {
+        const p = new Processor()
+        p.paramChanged("indexLFO", 0)
+        p.paramChanged("wobble", rate)
+        p.paramChanged("depth", 0.8)
+        const r = record(p, 1.5, [{at: 0, fn: pr => pr.noteOn(45, 0.9, 0, 1)}])
+        const env = rmsEnvelope(r.out, frame)
+        const steady = env.slice(Math.floor(env.length * 0.25))
+        const mx = Math.max(...steady), mn = Math.min(...steady)
+        const depth = (mx - mn) / mx
+        const detected = wobbleRate(env.slice(Math.floor(env.length * 0.2)), frameRate)
+        check(`wobble ${rate}Hz: modulates`, depth > 0.15, `depth=${(depth * 100).toFixed(0)}%`)
+        check(`wobble ${rate}Hz: detected rate ~${rate}Hz (or 2nd harmonic)`,
+            near(detected, rate, 0.25) || near(detected, rate * 2, 0.2),
+            `detected=${detected.toFixed(1)}Hz`)
+    }
+}
+// 5) Poly + reset
 {
     const p = new Processor()
     const r = record(p, 0.6, [
@@ -77,6 +121,24 @@ const check = (name, cond, extra = "") => { console.log(`${cond ? "PASS" : "FAIL
     check("chord max voices == 3", r.maxVoices === 3, `maxVoices=${r.maxVoices}`)
     check("reset culls all", p.voices.length === 0, `left=${p.voices.length}`)
     check("chord finite/bounded", !r.anyNaN && r.peak <= 1.0, `peak=${r.peak.toFixed(3)}`)
+}
+
+// 6) Stereo width decorrelates channels (outL != outR somewhere when width>0)
+{
+    const p = new Processor()
+    p.paramChanged("width", 0.5)
+    p.paramChanged("wobble", 4)
+    p.paramChanged("depth", 0.8)
+    p.noteOn(45, 0.9, 0, 1)
+    const outL = new Float32Array(BLOCK), outR = new Float32Array(BLOCK)
+    let diff = 0
+    const blocks = Math.floor(0.5 * sampleRate / BLOCK)
+    for (let b = 0; b < blocks; b++) {
+        outL.fill(0); outR.fill(0)
+        p.process([outL, outR], {s0: 0, s1: BLOCK, index: b, bpm: 140, p0: 0, p1: 0, flags: 5})
+        for (let i = 0; i < BLOCK; i++) diff = Math.max(diff, Math.abs(outL[i] - outR[i]))
+    }
+    check("stereo width decorrelates L/R", diff > 1e-4, `maxDiff=${diff.toFixed(4)}`)
 }
 
 console.log(fail === 0 ? "\nALL PASS" : `\n${fail} FAILURE(S)`)
