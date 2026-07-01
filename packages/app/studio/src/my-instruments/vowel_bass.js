@@ -88,7 +88,7 @@ class Processor {
         const vowels = this.vowels
         const tmpFL = this.tmpFL, tmpFR = this.tmpFR
         const lfoInc = morphLFO / fs2
-        const k = Math.max(0.1, 1 / (0.5 + formant * 3))
+        const k = Math.max(0.05, 1 / (1 + formant * 11))
         const preGain = 1 + drive * 6
         const toneCoefOS = 1 - Math.sqrt(1 - (0.1 + 0.8 * tone))
         const wLeft = 0.5 + width * 0.5, wRight = 0.5 - width * 0.5
