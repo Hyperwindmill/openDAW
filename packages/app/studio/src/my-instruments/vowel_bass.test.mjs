@@ -93,6 +93,28 @@ const check = (name, cond, extra = "") => { console.log(`${cond ? "PASS" : "FAIL
     check("reset culls all", p.voices.length === 0, `left=${p.voices.length}`)
     check("chord finite/bounded", !r.anyNaN && r.peak <= 1.0, `peak=${r.peak.toFixed(3)}`)
 }
+// 6) Stereo width decorrelates channels; width=0 is exact mono
+{
+    const runStereo = (width) => {
+        const p = new Processor()
+        p.paramChanged("width", width)
+        p.paramChanged("morphLFO", 6)
+        p.paramChanged("morphDepth", 0.8)
+        const total = Math.floor(0.8 * sampleRate)
+        const outL = new Float32Array(BLOCK), outR = new Float32Array(BLOCK)
+        let pos = 0, diff = 0, sawNote = false
+        while (pos < total) {
+            outL.fill(0); outR.fill(0)
+            if (!sawNote) { p.noteOn(48, 0.9, 0, 1); sawNote = true }
+            p.process([outL, outR], {s0: 0, s1: BLOCK, index: pos / BLOCK, bpm: 140, p0: 0, p1: 0, flags: 5})
+            for (let i = 0; i < BLOCK && pos + i < total; i++) diff = Math.max(diff, Math.abs(outL[i] - outR[i]))
+            pos += BLOCK
+        }
+        return diff
+    }
+    check("width>0 decorrelates L!=R", runStereo(0.8) > 1e-4, `maxDiff=${runStereo(0.8).toFixed(4)}`)
+    check("width=0 exact mono L==R", runStereo(0) === 0, `maxDiff=${runStereo(0).toExponential(2)}`)
+}
 
 console.log(fail === 0 ? "\nALL PASS" : `\n${fail} FAILURE(S)`)
 process.exit(fail === 0 ? 0 : 1)
