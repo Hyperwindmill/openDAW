@@ -2,7 +2,7 @@
 // @group FM orange
 // @param ratio      2     0.5   8     exp     x
 // @param index      4     0     20    linear
-// @param indexLFO   4     0     16    exp     Hz
+// @param indexLFO   4     0.1   16    exp     Hz
 // @param indexDepth 0.6
 // @group Bands purple
 // @param lowCut     300   80    800   exp     Hz

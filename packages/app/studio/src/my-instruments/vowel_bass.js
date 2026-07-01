@@ -5,7 +5,7 @@
 // @param sub        0.5
 // @group Vowel blue
 // @param vowel      0    0     4     linear
-// @param morphLFO   0    0     16    exp     Hz
+// @param morphLFO   0.1  0.1   16    exp     Hz
 // @param morphDepth 0.6
 // @group Formant purple
 // @param formant    0.5

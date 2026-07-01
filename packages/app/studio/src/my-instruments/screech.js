@@ -1,7 +1,7 @@
 // @label Screech
 // @group Sync orange
 // @param syncRatio   3    1     8     exp     x
-// @param syncLFO     0    0     16    exp     Hz
+// @param syncLFO     0.1  0.1   16    exp     Hz
 // @param syncDepth   0.4
 // @group Shape purple
 // @param shape       0    0     2     int
