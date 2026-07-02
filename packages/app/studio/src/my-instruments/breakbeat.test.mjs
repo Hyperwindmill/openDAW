@@ -57,6 +57,24 @@ const energyWindow = (buf, fromSec, toSec, sr) => {
     return energy
 }
 
+const stereo = (proc, seconds, events) => {
+    const total = Math.floor(seconds * sampleRate)
+    const outL = new Float32Array(BLOCK), outR = new Float32Array(BLOCK)
+    let pos = 0, maxDiff = 0, anyNaN = false, peak = 0
+    while (pos < total) {
+        outL.fill(0); outR.fill(0)
+        for (const ev of events) if (ev.at >= pos && ev.at < pos + BLOCK) ev.fn(proc)
+        proc.process([outL, outR], {s0: 0, s1: BLOCK, index: pos / BLOCK, bpm: 120, p0: 0, p1: 0, flags: 5})
+        for (let i = 0; i < BLOCK; i++) {
+            if (!Number.isFinite(outL[i]) || !Number.isFinite(outR[i])) anyNaN = true
+            const d = Math.abs(outL[i] - outR[i]); if (d > maxDiff) maxDiff = d
+            const a = Math.max(Math.abs(outL[i]), Math.abs(outR[i])); if (a > peak) peak = a
+        }
+        pos += BLOCK
+    }
+    return {maxDiff, anyNaN, peak}
+}
+
 let fail = 0
 const check = (name, cond, extra = "") => {
     console.log(`${cond ? "PASS" : "FAIL"}  ${name}  ${extra}`)
@@ -122,6 +140,26 @@ for (const pitch of [36, 38, 39, 42, 46]) {
     const highR = run(highProc, 0.5, [{at: 0, fn: pr => pr.noteOn(36, 0.9, 0, 1)}])
     check("drive raises peak (high >= low)", highR.peak >= lowR.peak,
         `low=${lowR.peak.toFixed(3)} high=${highR.peak.toFixed(3)}`)
+}
+
+// 6) Stereo width: width=0 is exact mono, width=1 decorrelates noise voices
+{
+    const monoProc = new Processor(); monoProc.paramChanged("width", 0)
+    const mono = stereo(monoProc, 0.5, [{at: 0, fn: pr => pr.noteOn(38, 0.9, 0, 1)}])
+    check("width=0 exact mono (L==R)", mono.maxDiff === 0, `maxDiff=${mono.maxDiff}`)
+    check("width=0 finite/bounded", !mono.anyNaN && mono.peak <= 1.0, `peak=${mono.peak.toFixed(3)}`)
+    const wideProc = new Processor(); wideProc.paramChanged("width", 1)
+    const wide = stereo(wideProc, 0.5, [{at: 0, fn: pr => pr.noteOn(38, 0.9, 0, 1)}])
+    check("width=1 decorrelates snare (L!=R)", wide.maxDiff > 1e-3, `maxDiff=${wide.maxDiff.toExponential(2)}`)
+    check("width=1 finite/bounded", !wide.anyNaN && wide.peak <= 1.0, `peak=${wide.peak.toFixed(3)}`)
+}
+
+// 7) Anti-alias: extreme drive stays finite/bounded on both channels
+{
+    const p = new Processor(); p.paramChanged("drive", 1.0)
+    const r = stereo(p, 0.5, [{at: 0, fn: pr => pr.noteOn(36, 1.0, 0, 1)}])
+    check("max drive finite (both ch)", !r.anyNaN)
+    check("max drive bounded (<=1.0)", r.peak <= 1.0, `peak=${r.peak.toFixed(3)}`)
 }
 
 console.log(fail === 0 ? "\nALL PASS" : `\n${fail} FAILURE(S)`)
