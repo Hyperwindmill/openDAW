@@ -36,6 +36,7 @@ import {ChainedSampleProvider, ChainedSoundfontProvider} from "@opendaw/studio-p
 import {IconSymbol} from "@opendaw/studio-enums"
 import {StudioShortcutManager} from "@/service/StudioShortcutManager"
 import {Menu} from "@/ui/components/Menu"
+import {WasmEngine} from "@opendaw/studio-core-wasm"
 
 if ("stackTraceLimit" in Error) {Error.stackTraceLimit = 50}
 
@@ -43,8 +44,9 @@ const loadBuildInfo = async () => fetch(`/build-info.json?v=${Date.now()}`)
     .then(x => x.json())
     .then(x => BuildInfo.parse(x))
 
-export const boot = async ({workersUrl, workletsUrl, offlineEngineUrl}: {
+export const boot = async ({workersUrl, workletsUrl, offlineEngineUrl, wasmProcessorUrl, wasmOfflineWorkerUrl}: {
     workersUrl: string, workletsUrl: string, offlineEngineUrl: string
+    wasmProcessorUrl: string, wasmOfflineWorkerUrl: string
 }) => {
     console.debug("booting...")
     console.debug(location.origin)
@@ -76,6 +78,16 @@ export const boot = async ({workersUrl, workletsUrl, offlineEngineUrl}: {
     const audioWorklets = await Promises.tryCatch(AudioWorklets.createFor(context))
     if (audioWorklets.status === "rejected") {
         return panic(audioWorklets.error)
+    }
+    WasmEngine.install({
+        processorUrl: wasmProcessorUrl,
+        offlineWorkerUrl: wasmOfflineWorkerUrl,
+        wasmUrl: `${import.meta.env.BASE_URL}wasm-engine`
+    })
+    if (WasmEngine.isEnabled() && !await WasmEngine.ensureReady(context)) {
+        // Session-only fallback (the EngineVariant provider yields null while the modules are absent):
+        // persisting the opt-out would strand the user on the TS engine after the artifacts return.
+        console.warn("WASM engine artifacts unavailable — falling back to the TypeScript engine.")
     }
     if (context.state === "suspended") {
         window.addEventListener("click",
