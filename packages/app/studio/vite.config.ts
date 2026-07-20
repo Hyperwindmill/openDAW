@@ -72,7 +72,7 @@ export default defineConfig(({command}) => {
                 // Allow serving files from the entire workspace
                 allow: [resolve(__dirname, "../../../")]
             },
-            hmr: {
+            hmr: process.env.NO_HMR === "true" ? false : {
                 overlay: false
             }
         },
