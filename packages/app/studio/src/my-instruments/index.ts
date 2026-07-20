@@ -11,6 +11,7 @@ import Braam from "./braam.js?raw"
 import Riser from "./riser.js?raw"
 import Downlifter from "./downlifter.js?raw"
 import NoiseSweep from "./noise_sweep.js?raw"
+import Sampler from "./sampler.js?raw"
 import {CodeEditorExample} from "@/ui/code-editor/CodeEditorState"
 
 export const MyInstruments: ReadonlyArray<CodeEditorExample> = [
@@ -26,5 +27,6 @@ export const MyInstruments: ReadonlyArray<CodeEditorExample> = [
     {name: "Braam", code: Braam},
     {name: "Riser", code: Riser},
     {name: "Downlifter", code: Downlifter},
-    {name: "Noise Sweep", code: NoiseSweep}
+    {name: "Noise Sweep", code: NoiseSweep},
+    {name: "Sampler", code: Sampler}
 ]
