@@ -133,6 +133,7 @@ export enum IconSymbol {
     SelectUp,
     Shadertoy,
     Shutdown,
+    Signalsmith,
     Sine,
     Solo,
     SoundFont,
@@ -166,6 +167,10 @@ export enum IconSymbol {
     Warning,
     Waveform,
     Zeitgeist,
+    Github,
+    Discord,
+    Instagram,
+    LinkedIn,
 }
 
 export namespace IconSymbol {

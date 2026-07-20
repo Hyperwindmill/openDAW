@@ -66,7 +66,29 @@ export class ProjectProfileService {
     }
 
     async save(): Promise<void> {
-        return this.#profile.ifSome(profile => profile.saved() ? profile.save() : this.saveAs())
+        return this.#profile.ifSome(async profile => {
+            if (!profile.saved()) {return this.saveAs()}
+            // OPFS can go unavailable AFTER a successful boot probe (Safari/Firefox flakiness, storage eviction),
+            // so the write can reject even though startup passed. Fail soft and retryable: the profile and its
+            // unsaved changes stay intact, the user can save again.
+            const {status, error} = await Promises.tryCatch(profile.save())
+            if (status === "rejected") {
+                console.warn(error)
+                RuntimeNotifier.notify({
+                    message: "Could not save project (storage temporarily unavailable). Please try again.",
+                    icon: "Warning"
+                })
+            }
+        })
+    }
+
+    async approveLosingChanges(): Promise<boolean> {
+        const hasChanges = this.#profile.mapOr(profile => profile.hasUnsavedChanges(), false)
+        if (!hasChanges) {return true}
+        return RuntimeNotifier.approve({
+            headline: "Closing Project?",
+            message: "You will lose all progress!"
+        })
     }
 
     async saveAs(): Promise<void> {
@@ -76,7 +98,15 @@ export class ProjectProfileService {
                 meta: profile.meta
             }))
             if (status === "rejected") {return}
-            const optProfile = await profile.saveAs(meta)
+            const {status: saveStatus, value: optProfile, error} = await Promises.tryCatch(profile.saveAs(meta))
+            if (saveStatus === "rejected") {
+                console.warn(error)
+                RuntimeNotifier.notify({
+                    message: "Could not save project (storage temporarily unavailable). Please try again.",
+                    icon: "Warning"
+                })
+                return
+            }
             optProfile.ifSome(profile => this.#profile.wrap(profile))
         })
     }
@@ -97,6 +127,7 @@ export class ProjectProfileService {
     }
 
     async openTemplate(uuid: UUID.Bytes, meta: ProjectMeta) {
+        if (!await this.approveLosingChanges()) {return}
         const {status, value: project, error} = await Promises.tryCatch(
             TemplateStorage.loadTemplate(uuid)
                 .then(buffer => Project.loadAnyVersion(this.#env, buffer))
@@ -113,6 +144,7 @@ export class ProjectProfileService {
     }
 
     async load(uuid: UUID.Bytes, meta: ProjectMeta) {
+        if (!await this.approveLosingChanges()) {return}
         const {status, value: project, error} = await Promises.tryCatch(
             ProjectStorage.loadProject(uuid).then(buffer => Project.loadAnyVersion(this.#env, buffer)))
         if (status === "rejected") {
@@ -160,6 +192,7 @@ export class ProjectProfileService {
     }
 
     async importBundle() {
+        if (!await this.approveLosingChanges()) {return}
         try {
             const [file] = await Files.open({types: [FilePickerAcceptTypes.ProjectBundleFileType]})
             const arrayBuffer = await file.arrayBuffer()
@@ -193,6 +226,7 @@ export class ProjectProfileService {
     }
 
     async loadFile() {
+        if (!await this.approveLosingChanges()) {return}
         try {
             const [file] = await Files.open({
                 types: [
